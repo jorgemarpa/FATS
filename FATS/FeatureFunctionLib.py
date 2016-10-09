@@ -1366,7 +1366,131 @@ class Gskew(Base):
         median_mag = np.median(magnitude)
         F_3_value = np.percentile(magnitude, 3)
         F_97_value = np.percentile(magnitude, 97)
-        
-        return (np.median(magnitude[magnitude <= F_3_value]) 
-                + np.median(magnitude[magnitude >= F_97_value]) 
+
+        return (np.median(magnitude[magnitude <= F_3_value])
+                + np.median(magnitude[magnitude >= F_97_value])
                 - 2*median_mag)
+
+class StructureFunction_index_21(Base):
+
+    def __init__(self):
+        self.Data = ['magnitude', 'time']
+
+    def fit(self, data):
+        magnitude = data[0]
+        time = data[1]
+
+        global m_21
+        global m_31
+        global m_32
+
+        Nsf = 100
+        Np = 100
+        sf1 = np.zeros(Nsf)
+        sf2 = np.zeros(Nsf)
+        sf3 = np.zeros(Nsf)
+        f = interp1d(time, magnitude)
+
+        time_int = np.linspace(np.min(time), np.max(time), Np)
+        mag_int = f(time_int)
+
+        for tau in np.arange(1, Nsf):
+            sf1[tau-1] = np.mean(np.power(np.abs(mag_int[0:Np-tau] - mag_int[tau:Np]) , 1.0))
+            sf2[tau-1] = np.mean(np.abs(np.power(np.abs(mag_int[0:Np-tau] - mag_int[tau:Np]) , 2.0)))
+            sf3[tau-1] = np.mean(np.abs(np.power(np.abs(mag_int[0:Np-tau] - mag_int[tau:Np]) , 3.0)))
+        sf1_log = np.log10(np.trim_zeros(sf1))
+        sf2_log = np.log10(np.trim_zeros(sf2))
+        sf3_log = np.log10(np.trim_zeros(sf3))
+
+        m_21, b_21 = np.polyfit(sf1_log, sf2_log, 1)
+        m_31, b_31 = np.polyfit(sf1_log, sf3_log, 1)
+        m_32, b_32 = np.polyfit(sf2_log, sf3_log, 1)
+
+        return m_21
+
+
+class StructureFunction_index_31(Base):
+    def __init__(self):
+
+        self.Data = ['magnitude', 'time']
+
+    def fit(self, data):
+        try:
+            return m_31
+        except:
+            print "error: please run StructureFunction_index_21 first to generate values for all Structure Function"
+
+
+class StructureFunction_index_32(Base):
+    def __init__(self):
+
+        self.Data = ['magnitude', 'time']
+
+    def fit(self, data):
+        try:
+            return m_32
+        except:
+            print "error: please run StructureFunction_index_21 first to generate values for all Structure Function"
+
+class SF_gamma(Base):
+
+    def __init__(self):
+        self.Data = ['magnitude', 'time', 'error']
+
+    def fit(self, data):
+        mag = data[0]
+        time = data[1]
+        err = data[2]
+
+        global A
+        global gamma
+
+        M = len(mag)
+        time -= np.min(time)
+        N_bins = 20
+
+        delta_t = np.abs(np.subtract.outer(time, time))
+        delta_mag = np.abs(np.subtract.outer(mag, mag))
+        delta_err = np.abs(np.add.outer(err**2, err**2))
+        iu1 = np.triu_indices_from(delta_t, 1)
+        delta_t = delta_t[iu1]
+        delta_mag = delta_mag[iu1]
+        delta_err = delta_err[iu1]
+
+        S10 = np.sqrt(np.pi/2)*np.abs(delta_mag) + np.sqrt(delta_err)
+
+        year = 365.25
+        tau_bin = np.linspace(0, np.max(delta_t), N_bins+1)
+        tau = []
+
+        S10_avg = np.zeros(N_bins)
+        tau = np.zeros(N_bins)
+
+        for n in range(0,N_bins):
+            mask_t = (delta_t >= tau_bin[n]) & (delta_t <= tau_bin[n+1])
+            S10_avg[n] = np.mean(S10[mask_t])
+            tau[n] = (tau_bin[n] + tau_bin[n+1])/2
+
+        log_tau = np.log10(tau/year)
+        log_S10 = np.log10(S10_avg)
+
+        def power_law(tau, gamma, a):
+            return tau*gamma + a
+
+        popt, pcov = curve_fit(power_law, log_tau, log_S10)#, bounds=([0.,0.], [np.inf,1.]))
+        A = 10**popt[1]
+        gamma = popt[0]
+
+        return gamma
+
+
+class SF_A(Base):
+    def __init__(self):
+
+        self.Data = ['magnitude', 'time', 'error']
+
+    def fit(self, data):
+        try:
+            return A
+        except:
+            print "error: please run SF_A first to generate values for all Structure Function"
